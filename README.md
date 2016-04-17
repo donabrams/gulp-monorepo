@@ -9,12 +9,22 @@ Behavior
 ========
 Without any config, packager will do the below:
 
+It will look to see if there is a `package.json` next to the file or between the file and the root `package.json` (finds the nearest `package.json` that isn't the root)
+
+If there isn't:
+
 1. Every file will be flattened (folder nesting ignored) and put in it's own directory
-2. The directory name will be the kabob case version of the file name (assumes files names are camel case).
-3. A `package.json` will be generated with keys `name` matching the directory name and `version` matching the nearest `package.json` `version`
+2. The directory name will be the kabob-case version of the file name (assumes files names are camel case).
+3. A `package.json` will be generated with keys `name` matching the directory name and `version` matching the root `package.json` `version`
 4. The `dependencies` of the `package.json` file will be generated analyzing the require/imports in the file and including all non-static packages. Versions will be pulled from the nearest `package.json`. If a package is missing a dependency, an error will be thrown. Node native module are ignored unless there is a matching dependency with the same name in the nearest package.json.
 
-(Note: If you don't want a single package per file, see config param `rollIntoNearest`)
+If there is:
+
+1. It rebases files relative to that nearest `package.json`
+2. Determining package name: If the nearest `package.json` has a name, it uses that as the package name. Otherwise, it uses the kebab-case name of the immediate directory holding the `package.json`  as the package name (and `scope` may only applied).
+3. Determining package version: If the nearest `package.json` has a version it uses that. Otherwise, it pulls the version from the root `package.json`.
+4. Determining dependencies: If the nearest `package.json` has dependencies defined and one is missing for a non-dev file it will error. Otherwise it will "pull" dependencies from the root `package.json` dependencies.
+5. Determining devDependencies: If the nearest `package.json` has devDependencies defined, it will error if one is missing in a dev file (marked via `filters`). Otherwise it will "pull" devDependencies from the root `package.json` devDependencies.
 
 Example
 -------
@@ -100,19 +110,10 @@ file structure of `dist` folder:
 Config overrides
 ================
 
-`rollIntoNearest`
------------------
-
-Defaults to `false`.
-
-When `false`, if you nest a `package.json` next to a file then it will be used for `version` and `dependencies` instead of the root `package.json`. This is useful for overriding defaults.
-
-This config operates a lot different when `true`. Many times, you don't want a single file per package. This changes the convention so that when a `package.json` is between the file and the root `package.json`, it rolls into that package instead (and uses it's name, version, dependences, etc).
-
 `rollBase`
 ----------
 
-Defaults to `null`. If `rollIntoNearest` is `true`, then files are still flattened to the root. Tf you have `plugin-a/package.json` and `plugin-a/src/yay.js` and want `yay.js` to map to `plugin-a/yay.js`, then you should set `rollBase` to `src`.
+Defaults to `null`. If you have `plugin-a/package.json` and `plugin-a/src/yay.js` and want `yay.js` to map to `plugin-a/yay.js`, then you should set `rollBase` to `src`.
 
 `scope`
 -------
@@ -152,7 +153,7 @@ If non-empty, copies the given keys from the nearest `package.json` to the gener
 ---------
 Filters match the filename with a `packageMatcher` and can override the following:
  - `dir`: the `subdirectory` inside that package
- - `dev`: use `devDependencies` instead of `dependencies`
+ - `dev`: use `devDependencies` instead of `dependencies`. Also marks a file in a nearest `package.json` file as dev (and can then use devDependencies accordingly).
  - `main`: Defaults to `false`. If `true`, updates the generated `package.json` `main`.
 
 A `packageMatcher` is a regex whose first capture is the camelcased package name to use.
@@ -215,7 +216,7 @@ gulp.task('default', function() {
       scope: "@donabrams",
       filters: [
         {
-          packageMatcher: /(.*)Style.(js|json)/,
+          packageMatcher: /(.*)Style.(?:js|json)/,
           dir: "__style__",
           dev: true,
         },
