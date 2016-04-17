@@ -7,7 +7,9 @@ import detectImportRequire from "detect-import-require"
 import fs from "fs"
 import gutil from "gulp-util"
 import _ from "lodash/fp"
+import {set as mutatingSet} from "lodash"
 import validatePackageName from "validate-npm-package-name"
+import VinylFile from "vinyl"
 
 export default function gulpMonorepo(opts) {
   const {/*rollIntoNearest=false, rollBase=null, */packageKeysAllowlist=[], scope=null, filters=[]} = opts
@@ -28,7 +30,7 @@ export default function gulpMonorepo(opts) {
     const {path: filePath, base, contents} = file
     try {
       const filter = filters.length
-        ? _.find(filters, (f)=> f.packageMatcher.test(filePath))
+        ? _.find((f)=> f.packageMatcher.test(filePath), filters)
         : null
       const packageName = getPackageName({
         scope,
@@ -61,6 +63,18 @@ export default function gulpMonorepo(opts) {
       }))
     }
     errOrFileCb()
+  },
+  function(flushCallback) {
+    Object.keys(packagesToWriteLast).forEach((k)=>{
+      const pkg = packagesToWriteLast[k]
+      this.push(new VinylFile({
+        cwd: "",
+        base: "",
+        path: `${pkg.name}/package.json`,
+        contents: new Buffer(JSON.stringify(pkg, null, 2)),
+      }))
+    })
+    flushCallback()
   })
 }
 
@@ -69,9 +83,10 @@ function getPackageName({fileName, scope}) {
 }
 
 function getPackageNameFromRequireString(requireString) {
-  return requireString[0] === "@"
-    ? requireString.substr(0, requireString.indexOf("/", requireString.indexOf("/")+1))
-    : requireString.substr(0, requireString.indexOf("/"))
+  const rs = `${requireString}/`
+  return rs[0] === "@"
+    ? rs.substr(0, rs.indexOf("/", rs.indexOf("/")+1))
+    : rs.substr(0, rs.indexOf("/"))
 }
 
 function getNearestPackageJsonWithCache() {
@@ -91,24 +106,27 @@ function getNearestPackageJsonWithCache() {
 function updatePackageJsonWithFileCached(packagesToWriteLast) {
   const getNearestPackageJson = getNearestPackageJsonWithCache()
   const getPackageToUpdate = ({packageName, basePackage, packageKeysAllowlist}) => {
-    return packagesToWriteLast[packageName]
+    const pkg = packagesToWriteLast[packageName]
         ? packagesToWriteLast[packageName]
-        : (packagesToWriteLast[packageName] = _.pick(basePackage, packageKeysAllowlist))
+        : (packagesToWriteLast[packageName] = _.pick(["name", "version", "description", ...packageKeysAllowlist], {
+          ...basePackage,
+          name: packageName,
+          description: `generated with packager from ${basePackage.name}`,
+        }))
+    return pkg
   }
   return function updatePackageJsonWithFile({packageName, filePath, fileContents, isDev=false, isMain=false, pathInPackage, packageKeysAllowlist}) {
     if (path.extname(filePath) === ".js") {
       const dependencies = detectImportRequire(fileContents)
         // don't bother with relative paths
-        .filter((d)=>d[0] === ".")
+        .filter((d)=>d[0] !== ".")
         .map(getPackageNameFromRequireString)
-      // just a little short circuit optimization to confuse you
-      if (!dependencies.length) return
       const {basePackagePath, basePackage} = getNearestPackageJson(filePath)
       const packageToUpdate = getPackageToUpdate({packageName, basePackage, packageKeysAllowlist})
       const depsKey = isDev ? "devDependencies" : "dependencies"
       dependencies.forEach((dep)=> {
         // search base package for depsKey first, but also check non-dev deps if it's a devDependency. npm crazy and devDeps kinda extend non-dev Deps.
-        const baseVersion = _.get(basePackage, [depsKey, dep], null) || (isDev && _.get(basePackage, ["dependencies", dep], null))
+        const baseVersion = _.get([depsKey, dep], basePackage) || (isDev && _.get(["dependencies", dep], basePackage))
         if (!baseVersion) {
           // only throw an error if it's not a core node module (like fs or path). Otherwise, just don't add it.
           // Reason this isn't a filter above: some built in's (such as assert) also have npm packages. Which is kinda terrible, but ya deal with what ya have.
@@ -117,11 +135,11 @@ function updatePackageJsonWithFileCached(packagesToWriteLast) {
           }
         } else {
           // There may be duplicate dependencies between dependencies and devDependencies. Take care of that at write time (along with sorting).
-          _.set(packageToUpdate, [depsKey, dep], baseVersion)
+          mutatingSet(packageToUpdate, [depsKey, dep], baseVersion)
         }
       })
-      if (!isMain) {
-        _.set(packageToUpdate, ["main"], `./${pathInPackage}`)
+      if (isMain) {
+        mutatingSet(packageToUpdate, ["main"], `./${pathInPackage}`)
       }
     }
   }
