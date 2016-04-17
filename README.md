@@ -217,7 +217,7 @@ file structure of `dist/@donabrams` folder:
 |  |-- __tests__
 |  |  +-- yayTest.js
 |  +-- __style__
-|     +-- yayStyle.js
+|     +-- yayStyle.json
 +-- picnic-basket
 |  |-- package.json
 |  +-- picnicBasket.js
