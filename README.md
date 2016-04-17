@@ -70,13 +70,13 @@ file structure of `dist` folder:
 |  +-- yay.js
 +-- hey-boo-boo
 |  |-- package.json
-|  |-- heyBooBoo.js
+|  +-- heyBooBoo.js
 +-- picnic-basket
 |  |-- package.json
-|  |-- picnicBasket.js
+|  +-- picnicBasket.js
 +-- y-o-l-o
    |-- package.json
-   |-- YOLO.json
+   +-- YOLO.json
 ```
 
 `dist/yay/package.json`:
@@ -220,10 +220,10 @@ file structure of `dist/@donabrams` folder:
 |     +-- yayStyle.js
 +-- picnic-basket
 |  |-- package.json
-|  |-- picnicBasket.js
+|  +-- picnicBasket.js
 +-- y-o-l-o
    |-- package.json
-   |-- YOLO.json
+   +-- YOLO.json
 ```
 
 `dist/@donabrams/yay/package.json`:
