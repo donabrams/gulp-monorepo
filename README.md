@@ -1,4 +1,4 @@
-gulp-packager 
+gulp-monorepo 
 =============
 
 TLDR; conventioned tool to convert a mono repo into LOTS of repos
@@ -11,6 +11,8 @@ Without any config, packager will do the below:
 2. The directory name will be the kabob case version of the file name (assumes files names are camel case).
 3. A `package.json` will be generated with keys `name` matching the directory name and `version` matching the nearest `package.json` `version`
 4. The `dependencies` of the `package.json` file will be generated analyzing the require/imports in the file and including all non-static packages. Versions will be pulled from the nearest `package.json`. If a package is missing a dependency, an error will be thrown. Node native module are ignored unless there is a matching dependency with the same name in the nearest package.json.
+
+(Note: If you don't want a single package per file, see config param `rollIntoNearest`)
 
 Example
 -------
@@ -51,11 +53,11 @@ import somePackage from 'some-package'
 
 ```
 import gulp from 'gulp'
-import packager from 'gulp-packager'
+import monorepo from 'gulp-monorepo'
 
 gulp.task('default', function() {
 	gulp.src(["src/**/*"])
-	    .pipe(packager())
+	    .pipe(monorepo())
 	    .dest("dist")
 })
 ```
