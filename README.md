@@ -1,6 +1,6 @@
 SOLICITING API FEEDBACK: https://github.com/donabrams/gulp-monorepo/issues/1
 
-gulp-monorepo 
+gulp-monorepo
 =============
 
 TLDR; conventioned tool to convert a mono repo into LOTS of repos
@@ -103,7 +103,7 @@ Config overrides
 `rollIntoNearest`
 -----------------
 
-Defaults to `false`. 
+Defaults to `false`.
 
 When `false`, if you nest a `package.json` next to a file then it will be used for `version` and `dependencies` instead of the root `package.json`. This is useful for overriding defaults.
 
@@ -211,22 +211,22 @@ import packager from 'gulp-packager'
 
 gulp.task('default', function() {
   gulp.src(["src/**/*"])
-      .pipe(packager({
-        scope: "@donabrams",
-        filters: [
-          {
-            packageMatcher: /(.*)Style\.{js,json}$/,
-            dir: "__style__",
-            dev: true,
-          },
-          {
-            packageMatcher: /(.*)Test\.js$/,
-            dir: "__test__",
-            dev: true,
-          },
-        ],
-      }))
-      .dest("dist")
+    .pipe(packager({
+      scope: "@donabrams",
+      filters: [
+        {
+          packageMatcher: /(.*)Style.(js|json)/,
+          dir: "__style__",
+          dev: true,
+        },
+        {
+          packageMatcher: /(.*)Test.js/,
+          dir: "__test__",
+          dev: true,
+        }
+      ],
+    }))
+    .dest("dist")
 })
 ```
 
