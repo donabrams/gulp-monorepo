@@ -1,3 +1,5 @@
+SOLICITING API FEEDBACK: https://github.com/donabrams/gulp-monorepo/issues/1
+
 gulp-monorepo 
 =============
 
