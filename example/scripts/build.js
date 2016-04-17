@@ -11,12 +11,12 @@ gulp.task("build", function() {
       scope: "@donabrams",
       filters: [
         {
-          packageMatcher: /(.*)Style.{js,json}/,
+          packageMatcher: /(.*)Style.(js|json)/,
           dir: "__style__",
           dev: true,
         },
         {
-          packageMatcher: /(.*)Test.{js}/,
+          packageMatcher: /(.*)Test.js/,
           dir: "__test__",
           dev: true,
         }

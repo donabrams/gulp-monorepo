@@ -30,12 +30,14 @@ export default function gulpMonorepo(opts) {
     const {path: filePath, base, contents} = file
     try {
       const filter = filters.length
-        ? _.find((f)=> f.packageMatcher.test(filePath), filters)
+        ? _.find((f)=> {
+          return f.packageMatcher.test(filePath)
+        }, filters)
         : null
       const packageName = getPackageName({
         scope,
         fileName: filter
-          ? filter.packageMatcher.match(filePath)[1]
+          ? filter.packageMatcher.exec(filePath)[1]
           : filePath,
       })
       if (!validatePackageName(packageName).validForOldPackages) {
