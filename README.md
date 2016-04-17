@@ -1,7 +1,7 @@
 gulp-packager 
 =============
 
-TLDR; converts a single repo into LOTS of repos
+TLDR; conventioned tool to convert a mono repo into LOTS of repos
 
 Behavior
 ========
