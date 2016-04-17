@@ -1,3 +1,7 @@
-import asciffy from 'asciify'
+import asciffy from "asciify"
+import yay from "@donabrams/yay"
 
-console.log(asciify('yay again'))
+export default function yay2() {
+  yay()
+  console.log(asciify("yay again"))
+}

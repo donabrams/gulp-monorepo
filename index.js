@@ -66,7 +66,20 @@ export default function gulpMonorepo(opts) {
   },
   function(flushCallback) {
     Object.keys(packagesToWriteLast).forEach((k)=>{
-      const pkg = packagesToWriteLast[k]
+      const pkg = packagesToWriteLast[k];
+      ["dependencies","devDependencies"].forEach((k)=> {
+        if (!pkg[k]) return
+        Object.keys(pkg[k]).forEach((depName)=>{
+          const possibleError = pkg[k][depName]
+          if (possibleError.indexOf("Error: ") === 0) {
+            if (!packagesToWriteLast[depName]) {
+              this.emit("error", new gutil.PluginError("gulp-monorepo", possibleError))
+            } else {
+              pkg[k][depName] = packagesToWriteLast[depName].version
+            }
+          }
+        })
+      })
       this.push(new VinylFile({
         cwd: "",
         base: "",
@@ -128,10 +141,11 @@ function updatePackageJsonWithFileCached(packagesToWriteLast) {
         // search base package for depsKey first, but also check non-dev deps if it's a devDependency. npm crazy and devDeps kinda extend non-dev Deps.
         const baseVersion = _.get([depsKey, dep], basePackage) || (isDev && _.get(["dependencies", dep], basePackage))
         if (!baseVersion) {
-          // only throw an error if it's not a core node module (like fs or path). Otherwise, just don't add it.
-          // Reason this isn't a filter above: some built in's (such as assert) also have npm packages. Which is kinda terrible, but ya deal with what ya have.
+          // only set an error if it's not a core node module (like fs or path).
+          // Reason this isn't a filter above: some built in's (such as assert) also have npm packages. Which is kinda terrible, but ya deal with what ya have
           if (!isBuiltIn(dep)) {
-            throw new Error(`${isDev ? "devDependency" : "dependency"} ${dep} not in ${basePackagePath} but used in ${filePath}`)
+            // It's possible it's another repo inside the monorepo. So don't throw here, but set an error string.
+            mutatingSet(packageToUpdate, [depsKey, dep], `Error: ${isDev ? "devDependency" : "dependency"} ${dep} not in ${basePackagePath} but used in ${filePath}`)
           }
         } else {
           // There may be duplicate dependencies between dependencies and devDependencies. Take care of that at write time (along with sorting).
