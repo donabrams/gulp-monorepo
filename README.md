@@ -147,14 +147,14 @@ file structure:
        +-- YOLO.json
 ```
 
-src/yay.js:
+`src/yay.js`:
 
 ```
 import tastyThings from 'tasty-things'
 import somePackage from 'some-package'
 ```
 
-src/yayTest.js:
+`src/yayTest.js`:
 
 ```
 import {expect} from 'chai'
@@ -162,7 +162,7 @@ import {expect} from 'chai'
 // ...
 ```
 
-package.json:
+`package.json`:
 
 ```
 {
@@ -177,7 +177,7 @@ package.json:
 }
 ```
 
-gulpfile.js:
+`gulpfile.js`:
 
 ```
 import gulp from 'gulp'
@@ -226,7 +226,7 @@ file structure of `dist/@donabrams` folder:
    |-- YOLO.json
 ```
 
-dist/@donabrams/yay/package.json:
+`dist/@donabrams/yay/package.json`:
 
 ```
 {
