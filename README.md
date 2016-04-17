@@ -103,15 +103,20 @@ Config overrides
 `rollIntoNearest`
 -----------------
 
-This is `false` by default. 
+Defaults to `false`. 
 
 When `false`, if you nest a `package.json` next to a file then it will be used for `version` and `dependencies` instead of the root `package.json`. This is useful for overriding defaults.
 
 This config operates a lot different when `true`. Many times, you don't want a single file per package. This changes the convention so that when a `package.json` is between the file and the root `package.json`, it rolls into that package instead (and uses it's name, version, dependences, etc).
 
+`rollBase`
+----------
+
+Defaults to `null`. If `rollIntoNearest` is `true`, then files are still flattened to the root. Tf you have `plugin-a/package.json` and `plugin-a/src/yay.js` and want `yay.js` to map to `plugin-a/yay.js`, then you should set `rollBase` to `src`.
+
 `scope`
 -------
-If specified, prepends the given scope onto generated package names and dir. 
+If specified, prepends the given scope onto generated package names and dir. This is v. useful for private repos (and keeping private repos private).
 
 If modifying the example above:
 
@@ -137,12 +142,20 @@ If modifying the example above:
 }
 ```
 
+`packageKeysAllowlist`
+-------------------------
+Defaults to `[]`.
+
+If non-empty, copies the given keys from the nearest `package.json` to the generated `package.json`.
+
 `filters`
 ---------
-Filters match the filename with a `pattern` and can override the following:
- - `package`: the `package` the file belongs in (camelCased, not kebob-cased)
+Filters match the filename with a `packageMatcher` and can override the following:
  - `dir`: the `subdirectory` inside that package
  - `dev`: use `devDependencies` instead of `dependencies`
+ - `main`: Defaults to `false`. If `true`, updates the generated `package.json` `main`.
+
+A `packageMatcher` is a regex whose first capture is the camelcased package name to use.
 
 Here's a large example of all these in action:
 
@@ -202,14 +215,12 @@ gulp.task('default', function() {
         scope: "@donabrams",
         filters: [
           {
-            pattern: "(.*)Style.{js,json}",
-            package: "$1",
+            packageMatcher: /(.*)Style\.{js,json}$/,
             dir: "__style__",
             dev: true,
           },
           {
-            pattern: "(.*)Test.js",
-            package: "$1",
+            packageMatcher: /(.*)Test\.js$/,
             dir: "__test__",
             dev: true,
           },
@@ -259,5 +270,4 @@ file structure of `dist/@donabrams` folder:
 Wishlist
 ========
 - A way to specify description per module
-- A way to pull specific fields from nearest package.json (such as authors, repo, coeffect deps like babel & mocha)
 - A way for a filtered file to affect the created package.json
