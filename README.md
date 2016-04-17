@@ -15,7 +15,8 @@ Without any config, packager will do the below:
 Example
 -------
 
-# file structure
+file structure:
+
 ```
  +-- gulpfile.js
  +-- package.json
@@ -26,12 +27,16 @@ Example
        |-- picnicBasket.js
        +-- YOLO.json
 ```
-# src/yay.js
+
+`src/yay.js`:
+
 ```
 import tastyThings from 'tasty-things'
 import somePackage from 'some-package'
 ```
-# package.json
+
+`package.json`:
+
 ```
 {
   "name": "my-little-mono-repo",
@@ -41,7 +46,9 @@ import somePackage from 'some-package'
 	}
 }
 ```
-# gulpfile.js
+
+`gulpfile.js`:
+
 ```
 import gulp from 'gulp'
 import packager from 'gulp-packager'
@@ -55,7 +62,8 @@ gulp.task('default', function() {
 
 After packager runs via `gulp`:
 
-# file structure of `dist` folder 
+file structure of `dist` folder:
+
 ```
 +-- yay
 |  |-- package.json
@@ -70,7 +78,9 @@ After packager runs via `gulp`:
    |-- package.json
    |-- YOLO.json
 ```
-# dist/yay/package.json
+
+`dist/yay/package.json`:
+
 ```
 {
     "name": "yay",
@@ -91,13 +101,17 @@ Config overrides
 If specified, prepends the given scope onto generated package names and dir. 
 
 If modifying the example above:
-#gulpfile.js
+
+`gulpfile.js`:
+
 ```
   //...
       .pipe(packager({scope:"@donabrams"}))
   //...
 ```
-# dist/@donabrams/yay/package.json
+
+`dist/@donabrams/yay/package.json`:
+
 ```
 {
     "name": "@donabrams/yay",
