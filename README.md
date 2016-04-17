@@ -96,6 +96,15 @@ file structure of `dist` folder:
 Config overrides
 ================
 
+`rollIntoNearest`
+-----------------
+
+This is `false` by default. 
+
+When `false`, if you nest a `package.json` next to a file then it will be used for `version` and `dependencies` instead of the root `package.json`. This is useful for overriding defaults.
+
+This config operates a lot different when `true`. Many times, you don't want a single file per package. This changes the convention so that when a `package.json` is between the file and the root `package.json`, it rolls into that package instead (and uses it's name, version, dependences, etc).
+
 `scope`
 -------
 If specified, prepends the given scope onto generated package names and dir. 
@@ -242,10 +251,6 @@ file structure of `dist/@donabrams` folder:
     }
 }
 ```
-
-Important note
-==============
-Notice I keep saying nearest package.json. If you nest a package.json next to a file then it will be used instead of the root. This means you can override specific dependencies and versions.
 
 Wishlist
 ========
