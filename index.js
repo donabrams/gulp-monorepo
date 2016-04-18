@@ -109,10 +109,9 @@ export default function gulpMonorepo(opts) {
                 if (!getPackage(depName)) {
                   throw new Error(version)
                 } else {
-                  pkg[depsKey] = getPackage(depName).version
+                  pkg[depsKey][depName] = getPackage(depName).version
                 }
               }
-              pkg[depsKey] = version
             }, pkg[depsKey])
             return pkg
           }, pkg)
