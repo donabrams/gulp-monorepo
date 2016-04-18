@@ -11,152 +11,188 @@ import {set as mutatingSet} from "lodash"
 import validatePackageName from "validate-npm-package-name"
 import VinylFile from "vinyl"
 
-export default function gulpMonorepo(opts) {
-  const {/*rollIntoNearest=false, rollBase=null, */packageKeysAllowlist=[], scope=null, filters=[]} = opts
-  const packagesToWriteLast = {}
-  const updatePackageJsonWithFile = updatePackageJsonWithFileCached(packagesToWriteLast)
-  return through.obj(function gulpMonorepoStream(file, enc, errOrFileCb) {
-
-    if (file.isNull()) {
-      errOrFileCb(null, file)
+function funVinylStream(pluginName, onFile, onBeforeFlush) {
+  return through.obj(function gulpMonorepoStream(file, enc, consumeNext) {
+    if (file.isNull() || !onFile) {
+      consumeNext(null, file)
       return
     }
-
     if (file.isStream()) {
-      errOrFileCb(new gutil.PluginError("gulp-monorepo", "Streaming not supported"))
+      consumeNext(new gutil.PluginError(pluginName, "Streaming not supported"))
       return
     }
-
-    const {path: filePath, base, contents} = file
+    const {path: filePath} = file
     try {
-      const filter = filters.length
-        ? _.find((f)=> {
-          return f.packageMatcher.test(filePath)
-        }, filters)
-        : null
-      const packageName = getPackageName({
-        scope,
-        fileName: filter
-          ? filter.packageMatcher.exec(filePath)[1]
-          : filePath,
-      })
-      if (!validatePackageName(packageName).validForOldPackages) {
-        throw new Error(`packageName "${packageName}" is not a valid. Current packageMatcher: ${filter && filter.packageMatcher ? filter.packageMatcher : "None defined"}`)
+      const toPush = onFile(file)
+      if (toPush && toPush.length) {
+        toPush.forEach((f)=>this.push(f))
       }
-      const subdir = (filter && filter.dir)
-        ? `${filter.dir}/`
-        : ""
-      const pathInPackage = `${subdir}${path.basename(filePath)}`
-      updatePackageJsonWithFile({
-        packageName,
-        filePath,
-        fileContents: contents,
-        isDev: filter && filter.dev,
-        pathInPackage,
-        isMain: !filter || (filter && filter.main),
-        packageKeysAllowlist,
-      })
-      file.path = `${base}${packageName}/${pathInPackage}`
-      this.push(file)
     } catch (err) {
-      this.emit("error", new gutil.PluginError("gulp-monorepo", err, {
+      this.emit("error", new gutil.PluginError(pluginName, err, {
         fileName: filePath,
         showProperties: false,
       }))
     }
-    errOrFileCb()
+    consumeNext()
   },
-  function(flushCallback) {
-    Object.keys(packagesToWriteLast).forEach((k)=>{
-      const pkg = packagesToWriteLast[k];
-      ["dependencies","devDependencies"].forEach((k)=> {
-        if (!pkg[k]) return
-        Object.keys(pkg[k]).forEach((depName)=>{
-          const possibleError = pkg[k][depName]
-          if (possibleError.indexOf("Error: ") === 0) {
-            if (!packagesToWriteLast[depName]) {
-              this.emit("error", new gutil.PluginError("gulp-monorepo", possibleError))
-            } else {
-              pkg[k][depName] = packagesToWriteLast[depName].version
-            }
-          }
-        })
+  function(afterFlush) {
+    if (onBeforeFlush) {
+      try {
+        const toPush = onBeforeFlush()
+        if (toPush && toPush.length) {
+          toPush.forEach((f)=>this.push(f))
+        }
+      } catch (err) {
+        this.emit("error", new gutil.PluginError(pluginName, err))
+      }
+    }
+    afterFlush()
+  })
+}
+
+export default function gulpMonorepo(opts) {
+  const {/*rollIntoNearest=false, rollBase=null, */packageKeysAllowlist=[], scope=null, filters=[]} = opts
+  // These are memoized here instead of globally because we want to refresh them every time gulpMonorepo is called (FS changes)
+  const packageNames = []
+  const getPackage = _.memoize(createPackage(packageNames))
+  const getNearestPackageJson = getNearestPackageJsonMemoized()
+  return funVinylStream("gulp-monorepo", function onFile(file) {
+    const {path: filePath, base, contents} = file
+    const filter = _.find((f)=> f.packageMatcher.test(filePath), filters)
+    const packageName = getPackageName({
+      scope,
+      filePath: filter ? filter.packageMatcher.exec(filePath)[1] : filePath,
+    })
+    if (!validatePackageName(packageName).validForOldPackages) {
+      throw new Error(`packageName "${packageName}" is not a valid. Current packageMatcher: ${filter && filter.packageMatcher ? filter.packageMatcher : "None defined"}`)
+    }
+    const subdir = (filter && filter.dir) ? `${filter.dir}/` : ""
+    const pathInPackage = `${subdir}${path.basename(filePath)}`
+    if (isJsFile(filePath)) {
+      const {pkgPath: basePackagePath, pkg: basePackage} = getNearestPackageJson(filePath)
+      const pkg = getPackage(packageName, basePackage, packageKeysAllowlist)
+      updatePackageJsonFromBasePackage({
+        pkg,
+        basePackage,
+        fileContents: contents,
+        isDev: filter && filter.dev,
+        filePath,
+        basePackagePath,
       })
-      this.push(new VinylFile({
+      // set main if it's not a filtered file or filter says it's main
+      const isMain = !filter || (filter && filter.main)
+      if (isMain) {
+        mutatingSet(pkg, ["main"], `./${pathInPackage}`)
+      }
+    }
+    file.path = `${base}${packageName}/${pathInPackage}`
+    return file
+  }, function onBeforeFlush() {
+    return _.compose(
+      _.map(pkg=>new VinylFile({
         cwd: "",
         base: "",
         path: `${pkg.name}/package.json`,
         contents: new Buffer(JSON.stringify(pkg, null, 2)),
-      }))
-    })
-    flushCallback()
+      })),
+      // First, go through dependencies and set the versions for the other packages
+      // in the monorepo. If the package still doesn't exist, this is where we error.
+      _.map((pkgName) => {
+        const pkg = getPackage(pkgName)
+        return ["dependencies","devDependencies"]
+          .reduce((__, depsKey)=> {
+            if (!pkg[depsKey]) return pkg
+            _.forEach((version, depName)=>{
+              // Convention: If package has late resolution, version starts with "Error: "
+              if (version.indexOf("Error: ") === 0) {
+                // Either the package doesn't have a version defined (error) or we set it now
+                if (!getPackage(depName)) {
+                  throw new Error(version)
+                } else {
+                  pkg[depsKey] = getPackage(depName).version
+                }
+              }
+              pkg[depsKey] = version
+            }, pkg[depsKey])
+            return pkg
+          }, pkg)
+      })
+    )(packageNames)
   })
 }
 
-function getPackageName({fileName, scope}) {
-  return (scope ? `${scope}/` : "") + toLowerKebab(path.basename(fileName, path.extname(fileName)))
+function getPackageName({filePath, scope}) {
+  return (scope ? `${scope}/` : "") + toLowerKebab(fileNameWithoutExt(filePath))
+}
+
+function fileNameWithoutExt(filePath) {
+  return path.basename(filePath, path.extname(filePath))
 }
 
 function getPackageNameFromRequireString(requireString) {
-  const rs = `${requireString}/`
-  return rs[0] === "@"
-    ? rs.substr(0, rs.indexOf("/", rs.indexOf("/")+1))
-    : rs.substr(0, rs.indexOf("/"))
+  const parts = requireString.split("/")
+  return requireString[0] === "@" ? `${parts[0]}/${parts[1]}` : parts[0]
 }
 
-function getNearestPackageJsonWithCache() {
-  const basePackageCache = {}
+function getNearestPackageJsonMemoized() {
+  const getPackageJsonPath = _.memoize(findNearestPackageJson)
+  const getPackageJson = _.memoize(loadPackageJson)
   return (filePath) => {
-    const basePackagePath = findup("package.json", {cwd: path.dirname(filePath)})
-    const basePackage = basePackageCache[basePackagePath]
-      ? basePackageCache[basePackagePath]
-      : (basePackageCache[basePackagePath] = JSON.parse(fs.readFileSync(basePackagePath, {encoding: "utf8"})))
+    const pkgPath = getPackageJsonPath(path.dirname(filePath))
+    const pkg = getPackageJson(pkgPath)
     return {
-      basePackagePath,
-      basePackage,
+      pkgPath,
+      pkg,
     }
   }
 }
 
-function updatePackageJsonWithFileCached(packagesToWriteLast) {
-  const getNearestPackageJson = getNearestPackageJsonWithCache()
-  const getPackageToUpdate = ({packageName, basePackage, packageKeysAllowlist}) => {
-    const pkg = packagesToWriteLast[packageName]
-        ? packagesToWriteLast[packageName]
-        : (packagesToWriteLast[packageName] = _.pick(["name", "version", "description", ...packageKeysAllowlist], {
-          ...basePackage,
-          name: packageName,
-          description: `generated with packager from ${basePackage.name}`,
-        }))
-    return pkg
+function findNearestPackageJson(dirName) {
+  return findup("package.json", {cwd: dirName})
+}
+
+function loadPackageJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, {encoding: "utf8"}))
+}
+
+function createPackage(packageNames) {
+  return (name, basePackage, packageKeysAllowlist=[]) => {
+    packageNames.unshift(name)
+    return _.pick(["name", "version", "description", ...packageKeysAllowlist], {
+      ...basePackage,
+      name,
+      description: `generated with packager from ${basePackage.name}`,
+    })
   }
-  return function updatePackageJsonWithFile({packageName, filePath, fileContents, isDev=false, isMain=false, pathInPackage, packageKeysAllowlist}) {
-    if (path.extname(filePath) === ".js") {
-      const dependencies = detectImportRequire(fileContents)
-        // don't bother with relative paths
-        .filter((d)=>d[0] !== ".")
-        .map(getPackageNameFromRequireString)
-      const {basePackagePath, basePackage} = getNearestPackageJson(filePath)
-      const packageToUpdate = getPackageToUpdate({packageName, basePackage, packageKeysAllowlist})
-      const depsKey = isDev ? "devDependencies" : "dependencies"
-      dependencies.forEach((dep)=> {
-        // search base package for depsKey first, but also check non-dev deps if it's a devDependency. npm crazy and devDeps kinda extend non-dev Deps.
-        const baseVersion = _.get([depsKey, dep], basePackage) || (isDev && _.get(["dependencies", dep], basePackage))
-        if (!baseVersion) {
-          // only set an error if it's not a core node module (like fs or path).
-          // Reason this isn't a filter above: some built in's (such as assert) also have npm packages. Which is kinda terrible, but ya deal with what ya have
-          if (!isBuiltIn(dep)) {
-            // It's possible it's another repo inside the monorepo. So don't throw here, but set an error string.
-            mutatingSet(packageToUpdate, [depsKey, dep], `Error: ${isDev ? "devDependency" : "dependency"} ${dep} not in ${basePackagePath} but used in ${filePath}`)
-          }
-        } else {
-          // There may be duplicate dependencies between dependencies and devDependencies. Take care of that at write time (along with sorting).
-          mutatingSet(packageToUpdate, [depsKey, dep], baseVersion)
-        }
-      })
-      if (isMain) {
-        mutatingSet(packageToUpdate, ["main"], `./${pathInPackage}`)
+}
+
+function isJsFile(filePath) {
+  return path.extname(filePath) === ".js"
+}
+
+function getDepVersion({pkg: {devDependencies={}, dependencies={}}, name, isDev}) {
+  // search base package for depsKey first, but also check non-dev deps if it's a devDependency. npm crazy and devDeps kinda extend non-dev Deps.
+  return _.get(name, {...(isDev ? devDependencies : {}), ...dependencies})
+}
+
+function updatePackageJsonFromBasePackage({pkg, basePackagePath, basePackage, filePath, fileContents, isDev=false}) {
+  const dependencies = detectImportRequire(fileContents)
+    // don't bother with relative paths
+    .filter((d)=>d[0] !== ".")
+    .map(getPackageNameFromRequireString)
+  const depsKey = isDev ? "devDependencies" : "dependencies"
+  dependencies.forEach((dep)=> {
+    const version = getDepVersion({pkg: basePackage, name: dep, isDev})
+    if (!version) {
+      // only set an error if it's not a core node module (like fs or path).
+      // Reason this isn't a filter above: some built in's (such as assert) also have npm packages. Which is kinda terrible, but ya deal with what ya have
+      if (!isBuiltIn(dep)) {
+        // It's possible it's another repo inside the monorepo. So don't throw here, but set an error string.
+        mutatingSet(pkg, [depsKey, dep], `Error: ${isDev ? "devDependency" : "dependency"} ${dep} not in ${basePackagePath} but used in ${filePath}`)
       }
+    } else {
+      // TODO: There may be duplicate dependencies between dependencies and devDependencies.
+      mutatingSet(pkg, [depsKey, dep], version)
     }
-  }
+  })
 }
