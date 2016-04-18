@@ -86,7 +86,7 @@ export default function gulpMonorepo(opts) {
       }
     }
     file.path = `${base}${packageName}/${pathInPackage}`
-    return file
+    return [file]
   }, function onBeforeFlush() {
     return _.compose(
       _.map(pkg=>new VinylFile({
